@@ -1,0 +1,61 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - 'main'
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout Repository
+
+      - uses: aws-actions/configure-aws-credentials@v3
+        with:
+          role-to-assume: ${{ secrets.IAMROLE_GITHUB }}
+          role-session-name: GitHub-Action-Role
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: actions/setup-node@v3
+        name: Install Node.js
+        with:
+          node-version: 20
+
+      - name: NPM Install
+        run: npm install
+
+      - name: NPM Build
+        run: npm run build
+
+      - name: AWS Deploy Push
+        run: |
+          aws deploy push \
+          --application-name ${{ vars.CODE_DEPLOY_APPLICATION }} \
+          --description "Github SHA: ${{ github.sha }}" \
+          --s3-location s3://${{ secrets.S3BUCKET }}/${{ github.sha }}.zip \
+          --source .
+        
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+    - uses: aws-actions/configure-aws-credentials@v3
+      with:
+        role-to-assume: ${{ secrets.IAMROLE_GITHUB }}
+        role-session-name: GitHub-Action-Role
+        aws-region: ${{ vars.AWS_REGION }}
+    - run: |
+        aws deploy create-deployment \
+        --application-name ${{ vars.CODE_DEPLOY_APPLICATION }} \
+        --deployment-group-name ${{ vars.DEPLOYMENT_GROUP }} \
+        --s3-location bucket=${{ secrets.S3BUCKET }},key=${{ github.sha }}.zip,bundleType=zip \
