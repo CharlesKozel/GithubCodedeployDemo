@@ -1,0 +1,1 @@
+pm2 startOrReload /myapp/ecosystem.config.js
